@@ -5,8 +5,8 @@ from rest_framework.response import Response
 from rest_framework import generics
 from .serializers import StaffsSerializer,StudentSerializer,CourseSerializer,StudentAndCourseInfoSerializer,GradeSerializer,AttendanceSerializer,FeesSerializer, PaymentSerializer,OverallReportSerializer
 from rest_framework.decorators import api_view,permission_classes
-from .models import Enrollment,StudentNotification
-from .serializers import EnrollmentSerializer,AnnouncementSerializer,StudentNotificationSerializer,StaffNotificationSerializer,ApplicantSerializer,DocumentSerializer,StaffStudentChatSerializer
+from .models import Enrollment,StudentNotification,StaffStudentChat,Notification
+from .serializers import EnrollmentSerializer,AnnouncementSerializer,StudentNotificationSerializer,StaffNotificationSerializer,ApplicantSerializer,DocumentSerializer,StaffStudentChatSerializer,FAQSerializer,ContactSerializer
 from .models import Course,Grade, Student,Transcript,StaffNotification
 from rest_framework import viewsets
 from .import models 
@@ -52,6 +52,12 @@ from django.core.mail import send_mail
 from random import randint
 import base64
 from io import BytesIO
+import time 
+from django.contrib.auth import logout
+from django.contrib import messages
+from django.conf import settings
+from django.template.loader import render_to_string
+
 
 
 class LoginView(generics.CreateAPIView):
@@ -82,53 +88,47 @@ class StaffsList(generics.ListCreateAPIView):
 
 class StaffsDetail(generics.RetrieveUpdateDestroyAPIView):
   queryset=models.Staffs.objects.all()
-  serializer_class=StaffsSerializer
+  serializer_class =StaffsSerializer
   #permission_classes=[permissions.IsAuthenticated]
 
 
 @csrf_exempt
 def staffs_login(request):
-    if request.method == 'POST':
-        email = request.POST.get('email')
-        password = request.POST.get('password')
-
-        try:
-            staffsData = models.Staffs.objects.get(email=email)
-        except models.Staffs.DoesNotExist:    
-            staffsData = None
-
-        if staffsData:
-            if not staffsData.verify_status:
-                return JsonResponse({'bool': False, 'msg': 'Account is not verified!!'})
-            else:
-                if staffsData.login_via_otp:
-                    otp_digit = randint(100000, 999999)
-                    send_mail(
-                        'Verify Account',
-                        'Please verify your account.',
-                        'priyaeswaran321@gmail.com',
-                        [email],
-                        fail_silently=False,
-                        html_message=f'<p>Your OTP is:</p><p>{otp_digit}</p>'
-                    )
-
-                    staffsData.otp_digit = otp_digit
-                    staffsData.save()
-
-                    return JsonResponse({'bool': True, 'staffs_id': staffsData.id, 'login_via_otp': True})
-                else:
-                    # Password verification using check_password
-                    if check_password(password, staffsData.password):
-                        return JsonResponse({'bool': True, 'staffs_id': staffsData.id, 'login_via_otp': False})
-                    else:
-                        return JsonResponse({'bool': False, 'msg': 'Invalid Email or Password!!'})
-
+    email = request.POST.get('email')
+    password = request.POST.get('password')
+    
+    try:
+        staffsData = models.Staffs.objects.get(email=email, password=password)
+    except models.Staffs.DoesNotExist:    
+        staffsData = None
+    
+    if staffsData:
+        if not staffsData.verify_status:
+            return JsonResponse({'bool': False, 'msg': 'Account is not verified!!'})
         else:
-            return JsonResponse({'bool': False, 'msg': 'Invalid Email or Password!!'})
-
+            if staffsData.login_via_otp:
+                otp_digit = randint(100000, 999999)
+                send_mail(
+                    'Verify Account',
+                    'Please verify your account',
+                    'logapriya202@gmail.com',
+                    [email],
+                    fail_silently=False,
+                    html_message=f'<p>Your OTP is:</p><p>{otp_digit}</p>'
+                )
+                staffsData.otp_digit = otp_digit  
+                staffsData.save()
+                
+                return JsonResponse({'bool': True, 'staffs_id': staffsData.id, 'login_via_otp': True})
+           
+            else:
+                return JsonResponse({'bool': True, 'staffs_id': staffsData.id, 'login_via_otp': False})
+               
     else:
-        return JsonResponse({'bool': False, 'msg': 'Method not allowed'})
-          
+        return JsonResponse({'bool': False, 'msg': 'Invalid Email or Password!!'})
+
+
+
 @csrf_exempt
 def verify_staff_via_otp(request, staff_id):
     otp_digit = request.POST.get('otp_digit')
@@ -146,41 +146,45 @@ def verify_staff_via_otp(request, staff_id):
     else:
         return JsonResponse({'bool': False}) 
 
+
     
        
 @csrf_exempt
 def staff_forget_password(request):
-    email=request.POST.get('email')
-    verify=models.Staffs.objects.filter(email=email).first()
-    if verify:
-      
-        link=f"http://localhost:3000/staff/change/password/{verify.id}/"
-        send_mail(
-                     'Verify Account',
-                     'please verify your account ',
-                     'priyaeswaran321@gmail.com',
-                     [email],
-                     fail_silently=False,
-                     html_message=f'<p> Your OTP is </p><p>{link}</p>'
-                 )
-                  
-        
-        return JsonResponse({'bool':True,'msg':'Please Check Your Mail'})
-    else:
-        return JsonResponse({'bool':False,'msg':'Invalid Email!!'})
+    email = request.POST.get('email')
+    verify = models.Staffs.objects.filter(email=email).first()
     
+    if verify:
+        link = f"http://localhost:3000/staff/change/password/{verify.id}/"
+        send_mail(
+            'Reset Password',
+            'Please reset your password',
+            'logapriya202@gmail.com',
+            [email],
+            fail_silently=False,
+            html_message=f'<p>Reset your password <a href="{link}">here</a></p>'
+        )
+        
+        return JsonResponse({'bool': True, 'msg': 'Please check your mail'})
+    else:
+        return JsonResponse({'bool': False, 'msg': 'Invalid Email!!'})
+
 
 
 
 @csrf_exempt
-def staff_change_password(request,staff_id):
-    password=request.POST.get('password')
-    verify=models.Staffs.objects.filter(id=staff_id).first()
+def staff_change_password(request, staff_id):
+    password = request.POST.get('password')
+    confirm_password = request.POST.get('confirm_password')
+    if password != confirm_password:
+        return JsonResponse({'bool': False, 'msg': 'Passwords do not match'})
+    verify = models.Staffs.objects.filter(id=staff_id).first()
+    
     if verify:
-        models.Staffs.objects.filter(id=staff_id).update(password=password)
-        return JsonResponse({'bool':True,'msg':'Password has been changed'})
+        models.Staffs.objects.filter(id=staff_id).update(password=password,confirm_password=confirm_password)
+        return JsonResponse({'bool': True, 'msg': 'Password has been changed'})
     else:
-        return JsonResponse({'bool':False,'msg':'Opps....Some error occur!!'})    
+        return JsonResponse({'bool': False, 'msg': 'Oops....Some error occurred!!'})
     
 
 
@@ -189,55 +193,57 @@ def staff_change_password(request,staff_id):
 class StudentList(generics.ListCreateAPIView):
   queryset=models.Student.objects.all()
   serializer_class=StudentSerializer
- # permission_classes=[permissions.IsAuthenticated]
+
+  def get(self, request, *args, **kwargs):
+        selected_batch = request.query_params.get('batch', None)
+        print('Selected Batch:', selected_batch)  # Debug print
+        queryset = self.filter_queryset(self.get_queryset())
+        if selected_batch:
+            queryset = queryset.filter(batch=selected_batch)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
 class StudentDetail(generics.RetrieveUpdateDestroyAPIView):
    queryset=models.Student.objects.all()
    serializer_class=StudentSerializer
    parser_classes = [MultiPartParser, FormParser]
 
   
+
 @csrf_exempt
 def student_login(request):
-    if request.method == 'POST':
+   
         email = request.POST.get('email')
         password = request.POST.get('password')
-
         try:
-            studentData = models.Student.objects.get(email=email)
+            studentData=models.Student.objects.get(email=email,password=password)
         except models.Student.DoesNotExist:    
-            studentData = None
-
+            studentData=None
         if studentData:
-            if not studentData.verify_status:
-                return JsonResponse({'bool': False, 'msg': 'Account is not verified!!'})
-            else:
-                if studentData.login_via_otp:
-                    otp_digit = randint(100000, 999999)
-                    send_mail(
+           if not studentData.verify_status:
+               return JsonResponse({'bool':False,'msg':'Account is not verified!!'})
+           else:
+               if studentData.login_via_otp:
+                   otp_digit=randint(100000,999999)
+                   send_mail(
                         'Verify Account',
-                        'Please verify your account.',
-                        'priyaeswaran321@gmail.com',
+                        'please verify your account ',
+                        'logapriya202@gmail.com',
                         [email],
                         fail_silently=False,
-                        html_message=f'<p>Your OTP is:</p><p>{otp_digit}</p>'
-                    )
+                        html_message=f'<p> Your OTP is </p><p>{otp_digit}</p>'
+                   )
+                   studentData.otp_digit=otp_digit  
+                   studentData.save()
 
-                    studentData.otp_digit = otp_digit
-                    studentData.save()
-
-                    return JsonResponse({'bool': True, 'student_id': studentData.id, 'login_via_otp': True})
-                else:
-                    # Password verification using check_password
-                    if check_password(password, studentData.password):
-                        return JsonResponse({'bool': True, 'student_id': studentData.id, 'login_via_otp': False})
-                    else:
-                        return JsonResponse({'bool': False, 'msg': 'Invalid Email or Password!!'})
-
+                    
+                   return JsonResponse({'bool':True,'student_id':studentData.id,'login_via_otp':True})
+           
+               else:
+                    return JsonResponse({'bool':True,'student_id':studentData.id,'login_via_otp':True})
+               
         else:
-            return JsonResponse({'bool': False, 'msg': 'Invalid Email or Password!!'})
-
-    else:
-        return JsonResponse({'bool': False, 'msg': 'Method not allowed'})
+            return JsonResponse({'bool':False,'msg':'Invalid Email or Password!!'})   
 
 @csrf_exempt
 def verify_student_via_otp(request,student_id):
@@ -264,7 +270,7 @@ def student_forget_password(request):
         send_mail(
                      'Verify Account',
                      'please verify your account ',
-                     'priyaeswaran321@gmail.com',
+                     'logapriya202@gmail.com',
                      [email],
                      fail_silently=False,
                      html_message=f'<p> Your OTP is </p><p>{link}</p>'
@@ -279,15 +285,20 @@ def student_forget_password(request):
 
 
 @csrf_exempt
-def student_change_password(request,student_id):
-    password=request.POST.get('password')
-    verify=models.Student.objects.filter(id=student_id).first()
-    if verify:
-        models.Student.objects.filter(id=student_id).update(password=password)
-        return JsonResponse({'bool':True,'msg':'Password has been changed'})
-    else:
-        return JsonResponse({'bool':False,'msg':'Opps....Some error occur!!'})            
+def student_change_password(request, student_id):
+    password = request.POST.get('password')
+    confirm_password = request.POST.get('confirm_password')
 
+    if password != confirm_password:
+        return JsonResponse({'bool': False, 'msg': 'Passwords do not match'})
+
+    verify = models.Student.objects.filter(id=student_id).first()
+
+    if verify:
+        models.Student.objects.filter(id=student_id).update(password=password, confirm_password=confirm_password)
+        return JsonResponse({'bool': True, 'msg': 'Password has been changed'})
+    else:
+        return JsonResponse({'bool': False, 'msg': 'Oops....Some error occurred!!'})
 
 @csrf_exempt        
 @api_view(['GET'])
@@ -299,16 +310,15 @@ def get_regulations(request):
     except Exception as e:
         return Response({'error': str(e)}, status=500)      
 
-
-@csrf_exempt        
+@csrf_exempt
 @api_view(['GET'])
 def get_batch(request):
     try:
-
-        batch = Student.objects.values_list('batch', flat=True).distinct()
+        # Filter out null values and use distinct() directly on the queryset
+        batch = Student.objects.exclude(batch__isnull=True).values_list('batch', flat=True).distinct()
         return Response({'batch': list(batch)})
     except Exception as e:
-        return Response({'error': str(e)}, status=500)             
+        return Response({'error': str(e)}, status=500)         
             
          
 #course creation         
@@ -322,7 +332,7 @@ def create_course(request):
             course_type = request.data.get('course_type')
             category = request.data.get('category')
             regulation = request.data.get('regulation')
-            academic_year = request.data.get('academic_year')
+           
             semester = request.data.get('semester')
             course_duration = request.data.get('course_duration')
             grade_ponits = request.data.get('grade_ponits')
@@ -338,7 +348,7 @@ def create_course(request):
                 course_type=course_type,
                 category=category,
                 regulation=regulation,
-                academic_year=academic_year,
+               
                 semester=semester,
                 course_duration=course_duration,
                 grade_ponits=grade_ponits,
@@ -356,29 +366,49 @@ def create_course(request):
 
         
  #course list       
-@csrf_exempt  
+@csrf_exempt
 @api_view(['GET', 'POST'])
 def course_list(request):
     if request.method == 'GET':
+        staff_id = request.GET.get('staff_id', None)
         regulation = request.GET.get('regulation', None)
 
+       
+        filters = {}
+
+      
+        if staff_id:
+            filters['created_by__id'] = staff_id
+
+     
         if regulation:
-            # Filter courses based on the selected regulation
-            courses = Course.objects.filter(regulation=regulation)
-        else:
-            # Return all courses if no regulation is specified
-            courses = Course.objects.all()
+            filters['regulation'] = regulation
+
+   
+        courses = Course.objects.filter(**filters)
 
         serializer = CourseSerializer(courses, many=True)
         return Response(serializer.data)
 
     elif request.method == 'POST':
-        serializer = CourseSerializer(data=request.data)
+        staff_data = request.data.get('created_by', {})
+        staff_serializer = StaffsSerializer(data=staff_data)
 
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST) 
+        if staff_serializer.is_valid():
+            staff_instance = staff_serializer.save()
+            course_data = request.data.copy()
+            course_data['created_by'] = staff_instance.id
+
+            course_serializer = CourseSerializer(data=course_data)
+            if course_serializer.is_valid():
+                course_serializer.save()
+                return Response(course_serializer.data, status=status.HTTP_201_CREATED)
+            else:
+                staff_instance.delete()
+                return Response(course_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(staff_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     
 #course details
 @api_view(['GET', 'PUT', 'DELETE'])
@@ -445,7 +475,7 @@ class EnrollmentCreate(generics.CreateAPIView):
 
 class StudentEnrolledCoursesAPIView(generics.ListAPIView):
     queryset = Enrollment.objects.all()
-    serializer_class = EnrollmentSerializer
+    serializer_class = StudentAndCourseInfoSerializer
     
     def get_queryset(self):
        
@@ -462,20 +492,37 @@ class StudentEnrolledCoursesAPIView(generics.ListAPIView):
     
 class AllEnrolledStudentsAPIView(generics.ListAPIView):
     serializer_class = EnrollmentSerializer
-    
+
     def get_queryset(self):
-        return Enrollment.objects.all()
+        course_id = self.request.query_params.get('course', None)
+        regulation = self.request.query_params.get('regulation', None)
+        batch = self.request.query_params.get('batch', None)
+
+        print(f"Course ID: {course_id}, Regulation: {regulation}, Batch: {batch}")
+
+        queryset = Enrollment.objects.all()
+
+        if course_id:
+            queryset = queryset.filter(course__id=course_id)
+
+        if regulation:
+            queryset = queryset.filter(course__regulation=regulation)
+
+        if batch:
+            queryset = queryset.filter(student__batch=batch)
+
+        return queryset
 
     def get_serializer(self, *args, **kwargs):
-       
         kwargs['context'] = self.get_serializer_context()
         kwargs['many'] = True
         return StudentAndCourseInfoSerializer(*args, **kwargs)
-    
+
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+    
 
 @api_view(['GET'])
 def get_course_categories(request, regulation):
@@ -498,38 +545,41 @@ def get_students_for_category(request, regulation, category,batch):
  
        
    
-#submit grades
-
 @csrf_exempt
 @api_view(['POST'])
 def submit_grades(request):
     try:
-        grades_data = request.data.get('grades')  
+        grades_data = request.data.get('grades') 
+        academic_year_str = request.data.get('academic_year') 
 
-    
+        # Parse the academic year string to get start and end years
+        start_year, end_year = academic_year_str.split('-')
+        start_year = int(start_year)
+        end_year = int(end_year)
+
         for enrollment_id, grade_data in grades_data.items():
             enrollment = Enrollment.objects.get(pk=enrollment_id)
 
-          
             enrollment.grade = grade_data.get('grade', '')
             enrollment.pass_fail = grade_data.get('passFail', '')
             enrollment.evaluation_type = grade_data.get('evaluationType', '')
+            enrollment.grade_academic_year = academic_year_str
 
             enrollment.save()
 
-         
             Grade.objects.create(
                 student=enrollment.student,
                 course=enrollment.course,
                 grade=enrollment.grade,
                 pass_fail=enrollment.pass_fail,
-                evaluation_type=enrollment.evaluation_type
+                evaluation_type=enrollment.evaluation_type,
+                grade_academic_year=enrollment.grade_academic_year,
             )
 
         return JsonResponse({'message': 'Grades submitted successfully'}, status=200)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
-    
+
 
 
     #view grade
@@ -679,7 +729,7 @@ class AttendanceListCreateView(generics.ListCreateAPIView):
             start_time = parse_datetime(f'2000-01-01T{start_time_str}')
             end_time = parse_datetime(f'2000-01-01T{end_time_str}')
             date = parse_datetime(date_str).date()
-
+            
             serializer.save(enrollment=enrollment, start_time=start_time, end_time=end_time, date=date)
 
             return Response({'success': 'Attendance submitted successfully'}, status=status.HTTP_200_OK)
@@ -693,7 +743,12 @@ class AttendanceListCreateView(generics.ListCreateAPIView):
 @api_view(['POST'])
 def submit_attendance(request):
     try:
+        # Change the key to match the one sent by the frontend
+        academic_year_str = request.data.get('academic_year')
         attendance_data = request.data.get('attendance', {})
+        start_year, end_year = academic_year_str.split('-')
+        start_year = int(start_year)
+        end_year = int(end_year)
 
         for enrollment_id, attendance_info in attendance_data.items():
             try:
@@ -702,6 +757,9 @@ def submit_attendance(request):
             except (ValueError, Enrollment.DoesNotExist):
                 return Response({'error': f'Enrollment with id {enrollment_id} does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
 
+            # Change the key in attendance_info to match the one sent by the frontend
+            attendance_info['attendance_academic_year'] = academic_year_str
+            
             serializer = AttendanceSerializer(data=attendance_info)
             if serializer.is_valid():
                 serializer.save(enrollment=enrollment)
@@ -711,28 +769,37 @@ def submit_attendance(request):
         return Response({'success': 'Attendance submitted successfully'}, status=status.HTTP_200_OK)
 
     except Exception as e:
-     print(f'Error in perform_create: {e}')
-     return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        print(f'Error in perform_create: {e}')
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
 @api_view(['GET'])
 def get_student_attendance(request, student_id):
     try:
+        semester = request.query_params.get('semester', None)
+
+        # Assuming you have a Student model with the appropriate field for the ID
         student = get_object_or_404(Student, id=student_id)
-        student_enrollments = Enrollment.objects.filter(student=student)
-        all_attendance = []
 
-        for enrollment in student_enrollments:
-            enrollment_attendance = Attendance.objects.filter(enrollment=enrollment)
-            all_attendance.extend(enrollment_attendance)
+        # Filter based on Enrollment, which is linked to Student
+        enrollments = Enrollment.objects.filter(student=student)
 
-        serializer = AttendanceSerializer(all_attendance, many=True)
+        if semester is not None:
+            # If semester is provided, filter by semester
+            enrollments = enrollments.filter(course__semester=semester)
 
+        # Extract the enrollment IDs
+        enrollment_ids = enrollments.values_list('id', flat=True)
+
+        # Filter Attendance based on enrollment IDs
+        attendances = Attendance.objects.filter(enrollment__id__in=enrollment_ids)
+
+        serializer = AttendanceSerializer(attendances, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
     except Exception as e:
+        print(f'Error in get_student_attendance: {e}')
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
 
 
 
@@ -877,10 +944,12 @@ def handle_payment_success(request):
 class ApplicantListCreateView(generics.ListCreateAPIView):
     queryset = Applicant.objects.all()
     serializer_class = ApplicantSerializer
+    
 
 class ApplicantDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Applicant.objects.all()
     serializer_class = ApplicantSerializer
+
 
     def perform_update(self, serializer):
         instance = serializer.save(status='accepted')
@@ -988,25 +1057,34 @@ def download_document(request, pk):
 
 
 #messase student staff
+
+
 @csrf_exempt
-def save_staff_student_msg(request,staff_id,student_id):
-   
-        staff=models.Staffs.objects.get(id=staff_id) 
-        student=models.Student.objects.get(id=student_id) 
-        msg_text = request.POST.get('msg_text')  
-        msg_from = request.POST.get('msg_from')    
-        msgRes=models.StaffStudentChat.objects.create(
-            staff=staff,
-            student=student,
-            msg_text=msg_text,
-            msg_from=msg_from,
+def save_staff_student_msg(request, staff_id, student_id):
+    staff = Staffs.objects.get(id=staff_id)
+    student = Student.objects.get(id=student_id)
+    msg_text = request.POST.get('msg_text')
+    msg_from = request.POST.get('msg_from')
 
-        )
-        if msgRes:
-           return JsonResponse({'bool':True,'msg':'Message has been send'})
-        else:
-           return JsonResponse({'bool':False,'msg':'Oops... Some Error Occured!!'})   
+    msgRes = StaffStudentChat.objects.create(
+        staff=staff,
+        student=student,
+        msg_text=msg_text,
+        msg_from=msg_from,
+    )
 
+    # Add notification for new messages
+    if msgRes:
+        if msg_from == 'staff':
+            messages.success(request, f'You have a new message from Staff {staff.username}')
+        elif msg_from == 'student':
+            # Assuming there is an admin username field in your model
+            messages.success(request, f'You have a new message from Student {student.full_name}')
+        
+        return JsonResponse({'bool': True, 'msg': 'Message has been sent'})
+    else:
+        messages.error(request, 'Oops... Some Error Occurred!!')
+        return JsonResponse({'bool': False, 'msg': 'Oops... Some Error Occurred!!'})
 
 class MessageList(generics.ListAPIView):
     queryset = models.StaffStudentChat.objects.all()
@@ -1070,7 +1148,7 @@ def save_staff_student_group_msg_from_student(request, student_id):
 
 @csrf_exempt
 def save_admin_msg(request, staff_id, user_id):
-    try:
+   
         staff = Staffs.objects.get(id=staff_id)
         user = User.objects.get(id=user_id)
 
@@ -1085,13 +1163,16 @@ def save_admin_msg(request, staff_id, user_id):
         )
 
         if msgRes:
+            if msg_from == 'staff':
+                messages.success(request, f'You have a new message from Staff {staff.username}')
+            elif msg_from == 'user':
+            # Assuming there is an admin username field in your model
+                messages.success(request, f'You have a new message from Admin {user.username}')
+        
             return JsonResponse({'bool': True, 'msg': 'Message has been sent'})
         else:
-            return JsonResponse({'bool': False, 'msg': 'Oops... Some error occurred!!'})
-
-    except ObjectDoesNotExist:
-        return JsonResponse({'bool': False, 'msg': 'Invalid staff or user ID'}) 
-
+            messages.error(request, 'Oops... Some Error Occurred!!')
+            return JsonResponse({'bool': False, 'msg': 'Oops... Some Error Occurred!!'})
 
 class AdminStaffMessageList(generics.ListAPIView):
     queryset = models.StaffStudentChat.objects.all()
@@ -1104,28 +1185,32 @@ class AdminStaffMessageList(generics.ListAPIView):
         return models.StaffStudentChat.objects.filter(staff=staff,user=user).exclude(msg_text='')
     
 
-
 @csrf_exempt
-def save_admin_student_msg(request,student_id,user_id):
-   
-        student=models.Student.objects.get(id=student_id) 
-        user=models.User.objects.get(id=user_id) 
+def save_admin_student_msg(request, student_id, user_id):
+    student = Student.objects.get(id=student_id)
+    user = User.objects.get(id=user_id)
+    msg_text = request.POST.get('msg_text')
+    msg_from = request.POST.get('msg_from')
 
-        msg_text = request.POST.get('msg_text')  
-        msg_from = request.POST.get('msg_from')    
+    msgRes = StaffStudentChat.objects.create(
+        student=student,
+        user=user,
+        msg_text=msg_text,
+        msg_from=msg_from,
+    )
+
+    # Add notification for new messages
+    if msgRes:
+        if msg_from == 'student':
+            messages.success(request, f'You have a new message from Student {student.full_name}')
+        elif msg_from == 'user':
+            # Assuming there is an admin username field in your model
+             messages.success(request, f'You have a new message from Admin {user.username}')
         
-        msgRes=models.StaffStudentChat.objects.create(
-            student=student,
-            user=user,
-            msg_text=msg_text,
-            msg_from=msg_from,
-
-        )
-        if msgRes:
-           return JsonResponse({'bool':True,'msg':'Message has been send'})
-        else:
-           return JsonResponse({'bool':False,'msg':'Oops... Some Error Occured!!'})   
-
+        return JsonResponse({'bool': True, 'msg': 'Message has been sent'})
+    else:
+        messages.error(request, 'Oops... Some Error Occurred!!')
+        return JsonResponse({'bool': False, 'msg': 'Oops... Some Error Occurred!!'})
 
 class AdminStudentMessageList(generics.ListAPIView):
     queryset = models.StaffStudentChat.objects.all()
@@ -1178,14 +1263,10 @@ class FeesInformationView(generics.RetrieveAPIView):
 def set_fees(request):
     if request.method == 'POST':
         try:
-            # Extract the amount from the request data
+
             amount = float(request.POST.get('amount', 0))
 
-            # Set the fees in your database or any other storage mechanism.
-            # In this example, I'm creating a new Fees instance.
-            # You may want to update the existing instance or handle it differently based on your logic.
-
-            # Replace the following line with your logic to set the fees in the database
+            
             Fees.objects.create(amount=amount, student=None)
 
             return JsonResponse({'message': 'Fees set successfully'})
@@ -1219,25 +1300,20 @@ class OverallReportView(generics.RetrieveAPIView):
         grades_data = Grade.objects.all()
         grades_serializer = GradeSerializer(grades_data, many=True)
 
-        enrollment_data = Enrollment.objects.all()
-        enrollment_serializer = EnrollmentSerializer(enrollment_data, many=True)
 
         # Calculate percentages for each model
         applicant_percentage = calculate_applicant_percentage(applicant_data)
         attendance_percentage = calculate_attendance_percentage(attendance_data)
         grades_percentage = calculate_grades_percentage(grades_data)
-        enrollment_percentage = calculate_enrollment_percentage(enrollment_data)
 
         # Combine data for overall report
         overall_report_data = {
             'applicants': applicant_serializer.data,
             'attendance': attendance_serializer.data,
             'grades': grades_serializer.data,
-            'enrollments': enrollment_serializer.data,
             'applicant_percentage': applicant_percentage,
             'attendance_percentage': attendance_percentage,
             'grades_percentage': grades_percentage,
-            'enrollment_percentage': enrollment_percentage,
         }
 
         serializer = self.get_serializer(overall_report_data)
@@ -1245,29 +1321,20 @@ class OverallReportView(generics.RetrieveAPIView):
 
 @csrf_exempt
 def calculate_applicant_percentage(applicant_data):
-    # Your logic to calculate applicant percentage
-    # Example: Calculate the percentage of approved applicants
-
     total_applicants = applicant_data.count()
-
-    # Fetch the total number of students
     total_students = Student.objects.count()
-
     if total_applicants == 0 or total_students == 0:
         return 0.0
-
     approved_count = applicant_data.filter(status='approved').count()
     
-    # Your logic to calculate applicant percentage
-    # Example: Calculate the percentage of approved applicants out of total students
+
     applicant_percentage = (approved_count / total_students) * 100.0
 
     return round(applicant_percentage, 2)
 
 @csrf_exempt
 def calculate_attendance_percentage(attendance_data):
-    # Your logic to calculate attendance percentage
-    # Example: Calculate the average attendance percentage
+ 
     total_attendance = attendance_data.count()
     if total_attendance == 0:
         return 0.0
@@ -1278,8 +1345,7 @@ def calculate_attendance_percentage(attendance_data):
 
 @csrf_exempt
 def calculate_grades_percentage(grades_data):
-    # Your logic to calculate grades percentage
-    # Example: Calculate the average grade percentage
+   
     total_grades = grades_data.count()
     if total_grades == 0:
         return 0.0
@@ -1289,42 +1355,22 @@ def calculate_grades_percentage(grades_data):
     return round(grades_percentage, 2)
 
 
-@csrf_exempt
-def calculate_enrollment_percentage(enrollment_data):
-    total_enrollments = enrollment_data.count()
-    
-    # Fetch the total number of students
-    total_students = Student.objects.count()
+@api_view(['GET'])
+def academic_years(request):
+    academic_years = models.AcademicYear.objects.values_list('year', flat=True)
+    return Response({'academic_years': list(academic_years)})
 
-    if total_enrollments == 0 or total_students == 0:
-        return 0.0
 
-    # Replace 'some_field' with an actual field in the Enrollment model
-    completed_count = enrollment_data.filter(course__category='enrolled').count()
-
-    # Your logic to calculate enrollment percentage
-    # Example: Calculate the percentage of completed enrollments out of total students
-    enrollment_percentage = (completed_count / total_students) * 100.0
-
-    return round(enrollment_percentage, 2)
+class FaqListCreateAPIView(generics.ListCreateAPIView):
+    queryset = models.FAQ.objects.all()
+    serializer_class = FAQSerializer
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+class ContactList(generics.ListCreateAPIView):
+  queryset=models.Contact.objects.all()
+  serializer_class=ContactSerializer
 
 
 

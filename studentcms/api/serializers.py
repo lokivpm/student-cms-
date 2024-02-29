@@ -8,6 +8,7 @@ from django.core.mail import send_mail
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from datetime import datetime
+from django.contrib.auth.hashers import make_password
 
 
 from django.contrib.auth.models import User
@@ -27,6 +28,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 
+
 class StaffsSerializer(serializers.ModelSerializer):
     class Meta:
         model=models.Staffs
@@ -39,12 +41,13 @@ class StaffsSerializer(serializers.ModelSerializer):
       send_mail(
                 'Verify Account',
                 'please verify your account ',
-                'priyaeswaran321@gmail.com',
+                'logapriya202@gmail.com',
                 [email],
                 fail_silently=False,
                 html_message=f'<p> Your OTP is </p><p>{otp_digit}</p>'
             )
       return instance
+    
     
 
 
@@ -63,12 +66,12 @@ class StudentSerializer(serializers.ModelSerializer):
        send_mail(
                 'Verify Account',
                 'please verify your account ',
-                'priyaeswaran321@gmail.com',
+                'logapriya202@gmail.com',
                 [email],
                 fail_silently=False,
                 html_message=f'<p> Your OTP is </p><p>{otp_digit}</p>'
             )
-       return instance  
+       return instance 
     
 
 
@@ -95,12 +98,12 @@ class StudentAndCourseInfoSerializer(serializers.ModelSerializer):
     code = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     semester= serializers.SerializerMethodField()
-    academic_year= serializers.SerializerMethodField()
+    regulation= serializers.SerializerMethodField()
     registerNumber= serializers.SerializerMethodField()
     batch=serializers.SerializerMethodField()
     class Meta:
         model = Enrollment
-        fields = ['id', 'enrollment_date', 'student', 'course', 'full_name', 'code', 'category','semester','academic_year','registerNumber','batch']
+        fields = ['id', 'enrollment_date', 'student', 'course', 'full_name', 'code', 'category','semester','registerNumber','batch','regulation']
 
     def get_full_name(self, obj):
         return obj.student.full_name
@@ -110,18 +113,30 @@ class StudentAndCourseInfoSerializer(serializers.ModelSerializer):
     
     def get_batch(self, obj):
         return obj.student.batch
-
-
+    
     def get_code(self, obj):
         return obj.course.code
+    
     def get_semester(self, obj):
         return obj.course.semester
-    def get_academic_year(self, obj):
-        return obj.course.academic_year
-
+  
     def get_category(self, obj):
         return obj.course.category
+    
+    def get_regulation(self, obj):
+        return obj.course.regulation
 
+# class StudentAndCourseInfoSerializer(serializers.ModelSerializer):
+#     full_name = serializers.CharField(source='student.full_name')
+#     code = serializers.CharField(source='course.code')
+#     category = serializers.CharField(source='course.category')
+#     semester = serializers.CharField(source='course.semester')
+#     registerNumber = serializers.CharField(source='student.registerNumber')
+#     batch = serializers.CharField(source='student.batch')
+
+#     class Meta:
+#         model = Enrollment
+#         fields = ['id', 'enrollment_date', 'student', 'course', 'full_name', 'code', 'category', 'semester', 'registerNumber', 'batch']
 
 
 
@@ -129,13 +144,13 @@ class StudentAndCourseInfoSerializer(serializers.ModelSerializer):
 class GradeSerializer(serializers.ModelSerializer):
     student_name = serializers.SerializerMethodField()
     course_code = serializers.SerializerMethodField()
-    course_category = serializers.SerializerMethodField()
+    category = serializers.SerializerMethodField()
     course_type = serializers.SerializerMethodField()
     semester= serializers.SerializerMethodField()
 
     class Meta:
         model = Grade
-        fields = ['id', 'grade', 'pass_fail', 'evaluation_type', 'student', 'course', 'student_name', 'course_code', 'course_category', 'course_type','semester']
+        fields = ['id', 'grade', 'pass_fail', 'evaluation_type', 'student', 'course', 'student_name', 'course_code', 'category', 'course_type','semester','grade_academic_year']
 
     def get_student_name(self, obj):
         return obj.student.full_name
@@ -143,7 +158,7 @@ class GradeSerializer(serializers.ModelSerializer):
     def get_course_code(self, obj):
         return obj.course.code
 
-    def get_course_category(self, obj):
+    def get_category(self, obj):
         return obj.course.category
 
     def get_course_type(self, obj):
@@ -187,15 +202,15 @@ class TimeField(serializers.TimeField):
 class AttendanceSerializer(serializers.ModelSerializer):
     student_id = serializers.SerializerMethodField()
     course_type = serializers.SerializerMethodField()
-    course_category = serializers.SerializerMethodField()
+    category = serializers.SerializerMethodField()
     semester= serializers.SerializerMethodField()
-    academic_year= serializers.SerializerMethodField()
+  
     start_time = TimeField()
     end_time = TimeField()
 
     class Meta:
         model = Attendance
-        fields = ['id', 'enrollment', 'date', 'start_time', 'end_time', 'attendance', 'student_id', 'course_type', 'course_category','semester','academic_year']
+        fields = ['id', 'enrollment', 'date', 'start_time', 'end_time', 'attendance', 'student_id', 'course_type', 'category','semester','period','attendance_academic_year']
 
     def get_student_id(self, obj):
         return obj.enrollment.student.id
@@ -203,12 +218,12 @@ class AttendanceSerializer(serializers.ModelSerializer):
     def get_course_type(self, obj):
         return obj.enrollment.course.course_type
 
-    def get_course_category(self, obj):
+    def get_category(self, obj):
         return obj.enrollment.course.category
+    
     def get_semester(self, obj):
         return obj.enrollment.course.semester
-    def get_academic_year(self, obj):
-        return obj.enrollment.course.academic_year
+  
 
     def validate(self, data):
         start_time = data.get('start_time')
@@ -225,7 +240,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
         # Ensure that start_time and end_time are represented as strings
         representation['start_time'] = self.format_time(instance.start_time) if instance.start_time else None
         representation['end_time'] = self.format_time(instance.end_time) if instance.end_time else None
-
+       
         return representation
 
     def format_time(self, time):
@@ -237,11 +252,6 @@ class AttendanceSerializer(serializers.ModelSerializer):
 
 
 
-
-# class CustomUserSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = get_user_model()
-#         fields = ('id', 'username', 'password')
 
 
 
@@ -340,11 +350,11 @@ class PaymentSerializer(serializers.ModelSerializer):
 class OverallReportSerializer(serializers.Serializer):
     attendance = serializers.SerializerMethodField()
     grades = serializers.SerializerMethodField()
-    enrollment = serializers.SerializerMethodField()
     applicants = serializers.SerializerMethodField()
+    batch=serializers.SerializerMethodField()
 
     class Meta:
-        fields = ['attendance', 'grades', 'enrollment', 'applicants']
+        fields = ['attendance', 'grades', 'applicants','batch']
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -363,19 +373,34 @@ class OverallReportSerializer(serializers.Serializer):
         grades_data = Grade.objects.all()
         return GradeSerializer(grades_data, many=True).data
 
-    def get_enrollment(self, instance):
-        enrollment_data = Enrollment.objects.all()
-        return EnrollmentSerializer(enrollment_data, many=True).data
-
+   
     def get_applicants(self, instance):
         applicants_data = models.Applicant.objects.all()
         return ApplicantSerializer(applicants_data, many=True).data
-
-
     
+    def get_batch(self, instance):
+        batch_data = Student.objects.all()
+        return StudentSerializer(batch_data, many=True).data
+
+
+class FAQSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.FAQ
+        fields = ['question', 'answer']
 
 
 
+
+ 
+
+
+
+
+class ContactSerializer(serializers.ModelSerializer):
+    class Meta:
+        model=models.Contact
+        fields = ['id', 'username','email','query','add_time']   
+   
 
 
     # class OverallReportSerializer(serializers.Serializer):

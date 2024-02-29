@@ -9,9 +9,10 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
-
+import certifi
 from pathlib import Path
 
+import ssl 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -41,23 +42,27 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     "corsheaders",
     'api',
-  
     'rest_framework',
     
    
 
 ]
+#CORS_ALLOWED_ALL_ORIGINS=True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware', 
     'django.contrib.sessions.middleware.SessionMiddleware',
-    "corsheaders.middleware.CorsMiddleware",
-    "django.middleware.common.CommonMiddleware",
+    'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
 REST_FRAMEWORK={'DEFAULT PERMISSION_CLASSES':[
     'rest_framework.permission.AllowAny',],
     'DEFAULT_PARSER_CLASSES': [
@@ -71,14 +76,11 @@ REST_FRAMEWORK = {
     ],
 }
 
+# SESSION_COOKIE_AGE = 12 * 60 * 60
+SESSION_COOKIE_AGE = 300
 
 STRIPE_SECRET_KEY ='sk_test_51OCxr9SCNzugdY3nFtZkMSlmlHeupgjKO9FcYcFTjubgzzYld9BcfLSXXvEXu1aSnXPNUujKTuRftJDZBf8D5eLG00d7ATL6Eu'
 
-CORS_ORIGIN_WHITELIST=(
-    'http://localhost:3000',
-
-)
-CORS_ALLOWED_ALL_ORIGINS=True
 
 
 ROOT_URLCONF = 'studentcms.urls'
@@ -177,16 +179,20 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-#CORS_ALLOWED_ALL_ORIGINS=True
-#CORS_ALLOWED_ORIGINS = [
-    # "http://localhost:3000",
-#]
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / "media"
 
+DEBUG = True
+EMAIL_BACKEND = 'api.backends.email_backend.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_HOST_USER = 'logapriya202@gmail.com'
+EMAIL_HOST_PASSWORD = 'xdcghtaowkjdpnja'
+EMAIL_USE_TLS = True
+EMAIL_USE_SSL = False
 
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 
 SITE_URL='http://localhost:3000'

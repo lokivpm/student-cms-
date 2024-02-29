@@ -11,5 +11,7 @@ admin.site.register(models.Attendance)
 admin.site.register(models.StaffStudentChat)
 admin.site.register(models.Applicant)
 admin.site.register(models.Document)
+admin.site.register(models.FAQ)
+admin.site.register(models.Contact)
 
 

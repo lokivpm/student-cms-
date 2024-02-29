@@ -83,6 +83,8 @@ urlpatterns = [
     path('documents/<int:pk>/', DocumentDetailView.as_view(), name='document-detail'),
     path('documents/<int:pk>/download/', download_document, name='download_document'),
     path('student/<int:student_id>/documents/', views.DocumentListForStudent.as_view(), name='document-list-for-student'),
+    
+  
 
     path('list/students/', StudentList.as_view(), name='student-list'),
     path('list/staffs/', StaffsList.as_view(), name='staffs-list'),
@@ -108,7 +110,14 @@ urlpatterns = [
     path('set/fees/', set_fees, name='set-fees'),
     path('get/fees/', get_fees, name='get-fees'),
 
-     path('overall/report/', views.OverallReportView.as_view(), name='overall-report'),
+    path('overall/report/', views.OverallReportView.as_view(), name='overall-report'),
+    path('academic/years/', views.academic_years, name='academic_years'),
+
+    path('faq/',views.FaqListCreateAPIView.as_view(), name='FaqListCreateAPIView-create'),
+
+
+    path('contact/', views.ContactList.as_view()),
+
 
 
 ]
